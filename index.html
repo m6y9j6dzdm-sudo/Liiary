@@ -62,7 +62,7 @@
   }, 15000);
 </script>
 
-<script type="text/babel" data-presets="react">
+<script type="text/plain" id="liary-source">
 // Ícones simples em SVG puro, no estilo "stroke" (parecidos com lucide-react),
 // para o Liary rodar sozinho no navegador sem precisar de empacotador.
 const { createElement: h } = React;
@@ -1601,6 +1601,29 @@ try {
   );
 }
 
+</script>
+
+<script>
+  // Compila o código acima manualmente (em vez de deixar o Babel
+  // escanear a página sozinho), forçando o modo "clássico" de JSX —
+  // isso evita que versões novas do Babel (que passaram a exigir
+  // "import" de verdade) quebrem um script solto sem empacotador.
+  (function () {
+    try {
+      var source = document.getElementById("liary-source").textContent;
+      var compiled = Babel.transform(source, {
+        presets: [["react", { runtime: "classic" }]],
+        filename: "liary-app.jsx",
+      }).code;
+      var run = new Function(compiled);
+      run();
+    } catch (e) {
+      showFatalError(
+        "Erro ao compilar/executar o app (" + e.message + ")",
+        e.stack || ""
+      );
+    }
+  })();
 </script>
 </body>
 </html>
