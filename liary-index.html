@@ -1,0 +1,1606 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Liary — Controle de estoque</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><text y=%2220%22 font-size=%2220%22>💎</text></svg>" />
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #F5EFE2; }
+  #root { min-height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;color:#8A7A64;">
+    Carregando o Liary…
+  </div>
+</div>
+
+<script>
+  // Captura qualquer erro (de rede, script bloqueado, ou JS) e mostra na
+  // tela em vez de deixar a página travada em "Carregando" sem explicação.
+  function showFatalError(title, detail) {
+    var root = document.getElementById("root");
+    if (!root) return;
+    root.innerHTML =
+      '<div style="max-width:680px;margin:40px auto;padding:20px;font-family:monospace;' +
+      'background:#FFF5F5;border:1px solid #E39A9A;border-radius:12px;color:#5B2020;white-space:pre-wrap;">' +
+      '<strong>Erro ao carregar o Liary</strong><br/><br/>' +
+      (title || "") + "<br/><br/>" +
+      (detail || "") +
+      "</div>";
+  }
+  window.addEventListener("error", function (e) {
+    showFatalError(
+      "Falha de script: " + (e.message || "erro desconhecido"),
+      (e.filename ? "Arquivo: " + e.filename + (e.lineno ? " (linha " + e.lineno + ")" : "") : "") +
+        (e.error && e.error.stack ? "\n\n" + e.error.stack : "")
+    );
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    showFatalError(
+      "Promessa rejeitada sem tratamento",
+      (e.reason && e.reason.stack) || String(e.reason)
+    );
+  });
+  // Se depois de 8s o React ainda não montou nada, avisa que provavelmente
+  // um dos scripts externos (React/Babel) não carregou.
+  window.__liaryMounted = false;
+  setTimeout(function () {
+    if (!window.__liaryMounted) {
+      showFatalError(
+        "O aplicativo não terminou de carregar em 15 segundos.",
+        "Provável causa: um dos scripts externos (React, ReactDOM ou Babel, vindos do unpkg.com) não " +
+          "carregou — verifique sua conexão ou se algum bloqueador de anúncios/rastreadores está " +
+          "impedindo scripts de sites externos (unpkg.com) de carregar nesta página."
+      );
+    }
+  }, 15000);
+</script>
+
+<script type="text/babel" data-presets="react">
+// Ícones simples em SVG puro, no estilo "stroke" (parecidos com lucide-react),
+// para o Liary rodar sozinho no navegador sem precisar de empacotador.
+const { createElement: h } = React;
+
+function makeIcon(paths) {
+  return function Icon({ size = 16, strokeWidth = 1.75, className = "", style = {} }) {
+    return h(
+      "svg",
+      {
+        width: size,
+        height: size,
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth,
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        className,
+        style,
+      },
+      paths.map((d, i) => h("path", { key: i, d }))
+    );
+  };
+}
+
+const Gem = makeIcon(["M6 3h12l4 6-10 12L2 9Z", "M11 3 8 9l4 12 4-12-3-6", "M2 9h20"]);
+const Plus = makeIcon(["M12 5v14", "M5 12h14"]);
+const Search = makeIcon(["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "M21 21l-4.35-4.35"]);
+const Package = makeIcon([
+  "M21 8 12 3 3 8v8l9 5 9-5V8Z",
+  "M3 8l9 5 9-5",
+  "M12 13v8",
+]);
+const TrendingUp = makeIcon(["M3 17 9 11l4 4 8-8", "M15 7h6v6"]);
+const Users = makeIcon([
+  "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",
+  "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
+  "M22 21v-2a4 4 0 0 0-3-3.87",
+  "M16 3.13a4 4 0 0 1 0 7.75",
+]);
+const ShoppingBag = makeIcon([
+  "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4",
+  "M3 6h18",
+  "M16 10a4 4 0 0 1-8 0",
+]);
+const AlertTriangle = makeIcon([
+  "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z",
+  "M12 9v4",
+  "M12 17h.01",
+]);
+const ArrowDownCircle = makeIcon([
+  "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z",
+  "M8 12l4 4 4-4",
+  "M12 8v8",
+]);
+const ArrowUpCircle = makeIcon([
+  "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z",
+  "M16 12l-4-4-4 4",
+  "M12 16V8",
+]);
+const RotateCcw = makeIcon(["M3 12a9 9 0 1 0 3-6.7", "M3 4v5h5"]);
+const X = makeIcon(["M18 6 6 18", "M6 6l12 12"]);
+const ChevronRight = makeIcon(["m9 18 6-6-6-6"]);
+const Pencil = makeIcon([
+  "M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z",
+  "M15 5l4 4",
+]);
+const Trash2 = makeIcon([
+  "M3 6h18",
+  "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
+  "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6",
+  "M10 11v6",
+  "M14 11v6",
+]);
+const Camera = makeIcon([
+  "M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z",
+  "M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
+]);
+const Filter = makeIcon(["M22 3H2l8 9.46V19l4 2v-8.54L22 3Z"]);
+const LayoutGrid = makeIcon([
+  "M3 3h7v7H3z",
+  "M14 3h7v7h-7z",
+  "M14 14h7v7h-7z",
+  "M3 14h7v7H3z",
+]);
+const ListIcon = makeIcon([
+  "M8 6h13",
+  "M8 12h13",
+  "M8 18h13",
+  "M3 6h.01",
+  "M3 12h.01",
+  "M3 18h.01",
+]);
+
+
+const { useState, useMemo, useRef, useEffect } = React;
+
+/* ---------------------------------------------------------------------
+   DESIGN TOKENS
+   Paleta: papel-marfim + tinta espresso + cobre (metal de semijoia) +
+   vinho profundo (selo/etiqueta). Tipografia: Fraunces (display, editorial,
+   remete a etiqueta de joalheria) + Work Sans (UI) + IBM Plex Mono (códigos).
+   Elemento-assinatura: "etiqueta de peça" com borda serrilhada, como as
+   fichas de preço presas às semijoias — usada nos cards de produto e nas
+   linhas de comissão.
+--------------------------------------------------------------------- */
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+const brl = (n) =>
+  (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const fmtDate = (iso) => {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+};
+
+/* ---------------------------------------------------------------------
+   DADOS INICIAIS — em branco, prontos para uso real.
+--------------------------------------------------------------------- */
+
+const seedSuppliers = [];
+const seedProducts = [];
+
+/* ---------------------------------------------------------------------
+   PERSISTÊNCIA
+   Todos os dados (peças, fornecedores, vendas, movimentações) ficam
+   salvos em uma única chave pessoal no armazenamento do artefato, para
+   que nada se perca ao recarregar ou fechar a página.
+--------------------------------------------------------------------- */
+
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzyXQ6RpNs78s99gMSiyIsjcO5OGJAN7vCTkC5epIk7FcTiNtUktOgkI9GA5NMDh2dS/exec";
+
+// Fornecedores têm um campo "faixas" que é uma lista — precisa virar
+// texto para caber numa célula da planilha, e voltar a ser lista ao ler.
+function serializeSupplier(s) {
+  return { ...s, faixas: JSON.stringify(s.faixas || []) };
+}
+function deserializeSupplier(row) {
+  let faixas = [];
+  try {
+    faixas = typeof row.faixas === "string" ? JSON.parse(row.faixas) : row.faixas || [];
+  } catch {
+    faixas = [];
+  }
+  return { ...row, faixas };
+}
+
+async function loadData() {
+  try {
+    const res = await fetch(`${APPS_SCRIPT_URL}?sheet=all`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "Falha ao ler a planilha");
+    return {
+      data: {
+        products: json.data.produtos || [],
+        suppliers: (json.data.fornecedores || []).map(deserializeSupplier),
+        sales: json.data.vendas || [],
+        movements: json.data.movimentacoes || [],
+      },
+      available: true,
+    };
+  } catch (e) {
+    console.error("Falha ao carregar dados da planilha:", e);
+    return { data: null, available: false };
+  }
+}
+
+// Grava a lista inteira de uma aba de uma vez (mais simples e confiável
+// do que sincronizar linha a linha). Usa text/plain para evitar bloqueio
+// de CORS pelo Apps Script.
+async function replaceSheet(sheet, records) {
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ sheet, action: "replaceAll", records }),
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || `Falha ao salvar ${sheet}`);
+  return json.data;
+}
+
+async function saveData({ products, suppliers, sales, movements }) {
+  try {
+    await Promise.all([
+      replaceSheet("produtos", products),
+      replaceSheet("fornecedores", suppliers.map(serializeSupplier)),
+      replaceSheet("vendas", sales),
+      replaceSheet("movimentacoes", movements),
+    ]);
+    return true;
+  } catch (e) {
+    console.error("Falha ao salvar dados na planilha:", e);
+    return false;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   COMMISSION LOGIC
+   Regra: a faixa é definida pelo TOTAL vendido do fornecedor no período,
+   e o percentual daquela faixa incide sobre o total (não é progressivo
+   por faixa, e sim "qual faixa o total atingiu"). Isso é o que a regra
+   descrita ("até R$300: 25%; de R$300 a R$1.500: 35%; acima: 45%") indica
+   de forma mais natural — deixei uma nota sobre essa escolha no rodapé
+   da aba Fornecedores, e a estrutura é editável a qualquer momento.
+--------------------------------------------------------------------- */
+
+function faixaAtingida(total, faixas) {
+  const ordenadas = [...faixas].sort((a, b) => (a.ate ?? Infinity) - (b.ate ?? Infinity));
+  for (const f of ordenadas) {
+    if (f.ate === null || total <= f.ate) return f;
+  }
+  return ordenadas[ordenadas.length - 1];
+}
+
+function calcComissao(total, faixas) {
+  if (!faixas?.length || total <= 0) return { percentual: 0, comissao: 0, repasse: 0, faixa: null };
+  const faixa = faixaAtingida(total, faixas);
+  const percentual = faixa?.percentual || 0;
+  const comissao = total * (percentual / 100);
+  return { percentual, comissao, repasse: total - comissao, faixa };
+}
+
+/* ---------------------------------------------------------------------
+   SMALL UI ATOMS
+--------------------------------------------------------------------- */
+
+function Tag({ children, tone = "neutral" }) {
+  const tones = {
+    neutral: "bg-tan text-brown",
+    ok: "bg-mint text-green",
+    warn: "bg-warnbg text-warntext",
+    danger: "bg-dangerbg text-red",
+    plum: "bg-plumbg text-wine",
+    copper: "bg-coppertag text-copper2",
+  };
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-11 font-medium tracking-wide uppercase ${tones[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+function StatCard({ icon: Icon, label, value, sub, accent = "#8A5320" }) {
+  return (
+    <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-2 min-w-0">
+      <div className="flex items-center justify-between">
+        <span className="text-11 uppercase tracking-widest text-muted font-medium">{label}</span>
+        <Icon size={16} strokeWidth={1.75} style={{ color: accent }} />
+      </div>
+      <div className="font-serif text-2xl text-ink truncate" style={{ fontFamily: "Fraunces, serif" }}>{value}</div>
+      {sub ? <div className="text-xs text-muted">{sub}</div> : null}
+    </div>
+  );
+}
+
+function EmptyState({ title, hint, icon: Icon }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-14 px-6 border border-dashed border-borderlight rounded-2xl bg-cream">
+      <Icon size={26} strokeWidth={1.5} className="text-mutedlight mb-3" />
+      <div className="font-serif text-lg text-ink2" style={{ fontFamily: "Fraunces, serif" }}>{title}</div>
+      <div className="text-sm text-muted mt-1 max-w-xs">{hint}</div>
+    </div>
+  );
+}
+
+function Field({ label, children, className = "" }) {
+  return (
+    <label className={`flex flex-col gap-1.5 ${className}`}>
+      <span className="text-11 uppercase tracking-wider text-muted font-semibold">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const inputCls =
+  "w-full bg-card border border-borderlight rounded-lg px-3 py-2 text-sm text-ink placeholder-mutedlight focus:outline-none focus-ring-copper focus-border-copper transition";
+
+function Modal({ title, onClose, children, wide }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-ink-50 blur-2 p-0 sm:p-4">
+      <div className={`bg-cream w-full ${wide ? "sm:max-w-2xl" : "sm:max-w-md"} sm:rounded-2xl rounded-t-2xl max-h-modal overflow-y-auto shadow-2xl`}>
+        <div className="sticky top-0 bg-cream border-b border-border px-5 py-4 flex items-center justify-between">
+          <h3 className="font-serif text-lg text-ink" style={{ fontFamily: "Fraunces, serif" }}>{title}</h3>
+          <button onClick={onClose} className="text-muted hover-text-ink p-1">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   ITEM "TICKET" CARD — elemento-assinatura: cartão em formato de
+   etiqueta de preço, com borda serrilhada e furo de cordão.
+--------------------------------------------------------------------- */
+
+function TicketCard({ p, supplierName, onEdit, onSell, onReturn }) {
+  const statusTone = p.status === "disponivel" ? "ok" : p.status === "vendida" ? "plum" : "warn";
+  const statusLabel = p.status === "disponivel" ? "Disponível" : p.status === "vendida" ? "Vendida" : "Devolvida";
+  const low = p.status === "disponivel" && p.quantidade <= 1;
+  const materialLabel = {
+    banhado_ouro: "Banhado a ouro",
+    banhado_prata: "Banhado a prata",
+    prata_925: "Prata 925",
+    bijuteria: "Bijuteria",
+  }[p.material];
+
+  return (
+    <div className="relative bg-card border border-border rounded-xl overflow-hidden group">
+      <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-paper border border-border" />
+      <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-paper border border-border" />
+      <div className="flex">
+        <div className="w-24 h-24 sm:w-28 sm:h-28 shrink-0 bg-sand flex items-center justify-center overflow-hidden">
+          {p.foto ? (
+            <img src={p.foto} alt={p.descricao} className="w-full h-full object-cover" />
+          ) : (
+            <Gem size={26} strokeWidth={1.3} className="text-mutedlighter" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0 p-3 flex flex-col gap-1.5 border-l border-dashed border-border">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink leading-snug line-clamp-2">{p.descricao}</p>
+              {(p.categoria || p.subcategoria) && (
+                <p className="text-11 text-muted truncate">
+                  {[p.categoria, p.subcategoria].filter(Boolean).join(" · ")}
+                </p>
+              )}
+            </div>
+            <button onClick={() => onEdit(p)} className="text-mutedlight hover-text-copper2 shrink-0 p-0.5">
+              <Pencil size={14} />
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Tag tone={statusTone}>{statusLabel}</Tag>
+            <Tag tone={p.origem === "consignado" ? "copper" : "neutral"}>
+              {p.origem === "consignado" ? "Consignado" : "Próprio"}
+            </Tag>
+            {materialLabel && <Tag tone="plum">{materialLabel}</Tag>}
+            {low && <Tag tone="danger">Estoque baixo</Tag>}
+          </div>
+          <div className="flex items-center justify-between mt-auto pt-1">
+            <div className="font-mono text-11 text-muted" style={{ fontFamily: "IBM Plex Mono, monospace" }}>
+              {p.codigoInterno || p.codigoFornecedor || "—"} · qtd {p.quantidade}
+            </div>
+            <div className="font-serif text-base text-wine" style={{ fontFamily: "Fraunces, serif" }}>
+              {brl(p.valorVenda)}
+            </div>
+          </div>
+          {supplierName && (
+            <div className="text-11 text-muted -mt-0.5">Fornecedor: {supplierName}</div>
+          )}
+          {p.status === "disponivel" && (
+            <div className="flex gap-2 pt-1.5">
+              <button
+                onClick={() => onSell(p)}
+                className="flex-1 text-xs font-semibold bg-ink text-cream rounded-lg py-1.5 hover-bg-ink-hover transition"
+              >
+                Vender
+              </button>
+              {p.origem === "consignado" && (
+                <button
+                  onClick={() => onReturn(p)}
+                  className="text-xs font-medium border border-borderlight text-brown rounded-lg px-3 py-1.5 hover-bg-sand transition"
+                >
+                  Devolver
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   MAIN APP
+--------------------------------------------------------------------- */
+
+function SemijoiasERP() {
+  const [tab, setTab] = useState("dashboard");
+  const [products, setProducts] = useState(seedProducts);
+  const [suppliers, setSuppliers] = useState(seedSuppliers);
+  const [sales, setSales] = useState([]);
+  const [movements, setMovements] = useState([]);
+
+  const [productModal, setProductModal] = useState(null); // {} new | product | null
+  const [sellModal, setSellModal] = useState(null); // product
+  const [supplierModal, setSupplierModal] = useState(null);
+  const [search, setSearch] = useState("");
+  const [filterOrigem, setFilterOrigem] = useState("todos");
+  const [filterStatus, setFilterStatus] = useState("todos");
+  const [view, setView] = useState("grid");
+
+  const [loaded, setLoaded] = useState(false);
+  const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error | unavailable
+  const isFirstSave = useRef(true);
+
+  // Carrega os dados salvos assim que o app abre
+  useEffect(() => {
+    let active = true;
+    loadData().then(({ data, available }) => {
+      if (!active) return;
+      if (data) {
+        setProducts(data.products || []);
+        setSuppliers(data.suppliers || []);
+        setSales(data.sales || []);
+        setMovements(data.movements || []);
+      }
+      if (!available) setSaveState("unavailable");
+      setLoaded(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Salva automaticamente sempre que algo muda (só depois de carregar,
+  // para não sobrescrever dados salvos com o estado inicial em branco)
+  useEffect(() => {
+    if (!loaded || saveState === "unavailable") return;
+    if (isFirstSave.current) {
+      // não salva imediatamente após o carregamento inicial, só em mudanças reais
+      isFirstSave.current = false;
+      return;
+    }
+    setSaveState("saving");
+    const t = setTimeout(() => {
+      saveData({ products, suppliers, sales, movements }).then((ok) => {
+        setSaveState(ok ? "saved" : "error");
+      });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [products, suppliers, sales, movements, loaded]);
+
+  const supplierById = (id) => suppliers.find((s) => s.id === id);
+
+  /* ---------------- derived data ---------------- */
+
+  const filteredProducts = useMemo(() => {
+    return products.filter((p) => {
+      if (filterOrigem !== "todos" && p.origem !== filterOrigem) return false;
+      if (filterStatus !== "todos" && p.status !== filterStatus) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const hay = `${p.descricao} ${p.codigoFornecedor} ${p.codigoInterno} ${p.categoria} ${p.subcategoria || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [products, filterOrigem, filterStatus, search]);
+
+  const stats = useMemo(() => {
+    const emEstoque = products.filter((p) => p.status === "disponivel");
+    const consignadas = emEstoque.filter((p) => p.origem === "consignado").reduce((a, p) => a + p.quantidade, 0);
+    const proprias = emEstoque.filter((p) => p.origem === "proprio").reduce((a, p) => a + p.quantidade, 0);
+    const totalPecas = emEstoque.reduce((a, p) => a + p.quantidade, 0);
+    const totalVendido = sales.reduce((a, s) => a + s.valor, 0);
+    const baixo = emEstoque.filter((p) => p.quantidade <= 1);
+
+    let comissoesReceber = 0;
+    let repassarFornecedores = 0;
+    suppliers.forEach((s) => {
+      const totalForn = sales.filter((v) => v.fornecedorId === s.id).reduce((a, v) => a + v.valor, 0);
+      const { comissao, repasse } = calcComissao(totalForn, s.faixas);
+      comissoesReceber += comissao;
+      repassarFornecedores += repasse;
+    });
+
+    const lucroProprio = sales
+      .filter((s) => s.origem === "proprio")
+      .reduce((a, s) => {
+        const prod = products.find((p) => p.id === s.productId);
+        return a + (s.valor - (prod?.valorPeca || 0));
+      }, 0);
+
+    return { totalPecas, consignadas, proprias, totalVendido, comissoesReceber, repassarFornecedores, lucroProprio, baixo };
+  }, [products, sales, suppliers]);
+
+  const supplierSummaries = useMemo(() => {
+    return suppliers.map((s) => {
+      const vendasForn = sales.filter((v) => v.fornecedorId === s.id);
+      const total = vendasForn.reduce((a, v) => a + v.valor, 0);
+      const { percentual, comissao, repasse, faixa } = calcComissao(total, s.faixas);
+      return { supplier: s, total, percentual, comissao, repasse, faixa, nVendas: vendasForn.length };
+    });
+  }, [suppliers, sales]);
+
+  /* ---------------- actions ---------------- */
+
+  function addMovement(productId, tipo, detalhe) {
+    setMovements((m) => [{ id: uid(), productId, tipo, data: todayISO(), detalhe }, ...m]);
+  }
+
+  function saveProduct(data) {
+    if (data.id) {
+      setProducts((ps) => ps.map((p) => (p.id === data.id ? data : p)));
+    } else {
+      const novo = { ...data, id: uid() };
+      setProducts((ps) => [novo, ...ps]);
+      addMovement(novo.id, "entrada", `Entrada · ${novo.quantidade} un. cadastrada${novo.quantidade > 1 ? "s" : ""}`);
+    }
+    setProductModal(null);
+  }
+
+  function deleteProduct(id) {
+    setProducts((ps) => ps.filter((p) => p.id !== id));
+    setProductModal(null);
+  }
+
+  function registerSale({ product, cliente, valor, formaPagamento, quantidade }) {
+    const qtd = Math.max(1, Math.min(quantidade, product.quantidade));
+    const novaQtd = product.quantidade - qtd;
+    setProducts((ps) =>
+      ps.map((p) =>
+        p.id === product.id
+          ? { ...p, quantidade: novaQtd, status: novaQtd <= 0 ? "vendida" : "disponivel" }
+          : p
+      )
+    );
+    setSales((sl) => [
+      {
+        id: uid(),
+        productId: product.id,
+        data: todayISO(),
+        cliente: cliente || "Não informado",
+        valor: Number(valor),
+        formaPagamento,
+        origem: product.origem,
+        fornecedorId: product.fornecedorId || "",
+        quantidade: qtd,
+      },
+      ...sl,
+    ]);
+    addMovement(product.id, "venda", `Venda · ${qtd} un. · ${brl(valor)} · ${formaPagamento}`);
+    setSellModal(null);
+  }
+
+  function returnProduct(product) {
+    setProducts((ps) => ps.map((p) => (p.id === product.id ? { ...p, status: "devolvida" } : p)));
+    addMovement(product.id, "devolucao", `Devolução ao fornecedor · ${product.quantidade} un.`);
+  }
+
+  function saveSupplier(data) {
+    if (data.id) {
+      setSuppliers((ss) => ss.map((s) => (s.id === data.id ? data : s)));
+    } else {
+      setSuppliers((ss) => [...ss, { ...data, id: uid() }]);
+    }
+    setSupplierModal(null);
+  }
+
+  /* ---------------- nav ---------------- */
+
+  const NAV = [
+    { id: "dashboard", label: "Painel", icon: LayoutGrid },
+    { id: "estoque", label: "Estoque", icon: Package },
+    { id: "vendas", label: "Vendas", icon: ShoppingBag },
+    { id: "fornecedores", label: "Fornecedores", icon: Users },
+    { id: "movimentacoes", label: "Movimentações", icon: RotateCcw },
+  ];
+
+  return (
+    <div className="min-h-screen bg-paper text-ink" style={{ fontFamily: "Work Sans, sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+.bg-ink { background-color: #2B2420; }
+.text-ink { color: #2B2420; }
+.border-ink { border-color: #2B2420; }
+.hover-bg-ink:hover { background-color: #2B2420; }
+.hover-text-ink:hover { color: #2B2420; }
+.placeholder-ink::placeholder { color: #2B2420; }
+.bg-ink-hover { background-color: #403528; }
+.text-ink-hover { color: #403528; }
+.border-ink-hover { border-color: #403528; }
+.hover-bg-ink-hover:hover { background-color: #403528; }
+.hover-text-ink-hover:hover { color: #403528; }
+.placeholder-ink-hover::placeholder { color: #403528; }
+.bg-ink-border { background-color: #413628; }
+.text-ink-border { color: #413628; }
+.border-ink-border { border-color: #413628; }
+.hover-bg-ink-border:hover { background-color: #413628; }
+.hover-text-ink-border:hover { color: #413628; }
+.placeholder-ink-border::placeholder { color: #413628; }
+.bg-wine { background-color: #6B2737; }
+.text-wine { color: #6B2737; }
+.border-wine { border-color: #6B2737; }
+.hover-bg-wine:hover { background-color: #6B2737; }
+.hover-text-wine:hover { color: #6B2737; }
+.placeholder-wine::placeholder { color: #6B2737; }
+.bg-copper { background-color: #B87333; }
+.text-copper { color: #B87333; }
+.border-copper { border-color: #B87333; }
+.hover-bg-copper:hover { background-color: #B87333; }
+.hover-text-copper:hover { color: #B87333; }
+.placeholder-copper::placeholder { color: #B87333; }
+.bg-copper-hover { background-color: #A5652C; }
+.text-copper-hover { color: #A5652C; }
+.border-copper-hover { border-color: #A5652C; }
+.hover-bg-copper-hover:hover { background-color: #A5652C; }
+.hover-text-copper-hover:hover { color: #A5652C; }
+.placeholder-copper-hover::placeholder { color: #A5652C; }
+.bg-mint { background-color: #E4EEE1; }
+.text-mint { color: #E4EEE1; }
+.border-mint { border-color: #E4EEE1; }
+.hover-bg-mint:hover { background-color: #E4EEE1; }
+.hover-text-mint:hover { color: #E4EEE1; }
+.placeholder-mint::placeholder { color: #E4EEE1; }
+.bg-plumbg { background-color: #EAD9DE; }
+.text-plumbg { color: #EAD9DE; }
+.border-plumbg { border-color: #EAD9DE; }
+.hover-bg-plumbg:hover { background-color: #EAD9DE; }
+.hover-text-plumbg:hover { color: #EAD9DE; }
+.placeholder-plumbg::placeholder { color: #EAD9DE; }
+.bg-tan { background-color: #EFE7DA; }
+.text-tan { color: #EFE7DA; }
+.border-tan { border-color: #EFE7DA; }
+.hover-bg-tan:hover { background-color: #EFE7DA; }
+.hover-text-tan:hover { color: #EFE7DA; }
+.placeholder-tan::placeholder { color: #EFE7DA; }
+.bg-coppertag { background-color: #F0DFC9; }
+.text-coppertag { color: #F0DFC9; }
+.border-coppertag { border-color: #F0DFC9; }
+.hover-bg-coppertag:hover { background-color: #F0DFC9; }
+.hover-text-coppertag:hover { color: #F0DFC9; }
+.placeholder-coppertag::placeholder { color: #F0DFC9; }
+.bg-sand { background-color: #F0E7D6; }
+.text-sand { color: #F0E7D6; }
+.border-sand { border-color: #F0E7D6; }
+.hover-bg-sand:hover { background-color: #F0E7D6; }
+.hover-text-sand:hover { color: #F0E7D6; }
+.placeholder-sand::placeholder { color: #F0E7D6; }
+.bg-dangerbg { background-color: #F3DEDE; }
+.text-dangerbg { color: #F3DEDE; }
+.border-dangerbg { border-color: #F3DEDE; }
+.hover-bg-dangerbg:hover { background-color: #F3DEDE; }
+.hover-text-dangerbg:hover { color: #F3DEDE; }
+.placeholder-dangerbg::placeholder { color: #F3DEDE; }
+.bg-paper { background-color: #F5EFE2; }
+.text-paper { color: #F5EFE2; }
+.border-paper { border-color: #F5EFE2; }
+.hover-bg-paper:hover { background-color: #F5EFE2; }
+.hover-text-paper:hover { color: #F5EFE2; }
+.placeholder-paper::placeholder { color: #F5EFE2; }
+.bg-warnbg { background-color: #F6E3C9; }
+.text-warnbg { color: #F6E3C9; }
+.border-warnbg { border-color: #F6E3C9; }
+.hover-bg-warnbg:hover { background-color: #F6E3C9; }
+.hover-text-warnbg:hover { color: #F6E3C9; }
+.placeholder-warnbg::placeholder { color: #F6E3C9; }
+.bg-cream { background-color: #FBF7EF; }
+.text-cream { color: #FBF7EF; }
+.border-cream { border-color: #FBF7EF; }
+.hover-bg-cream:hover { background-color: #FBF7EF; }
+.hover-text-cream:hover { color: #FBF7EF; }
+.placeholder-cream::placeholder { color: #FBF7EF; }
+.bg-card { background-color: #FFFDF9; }
+.text-card { color: #FFFDF9; }
+.border-card { border-color: #FFFDF9; }
+.hover-bg-card:hover { background-color: #FFFDF9; }
+.hover-text-card:hover { color: #FFFDF9; }
+.placeholder-card::placeholder { color: #FFFDF9; }
+.bg-borderlight { background-color: #DCCFB5; }
+.text-borderlight { color: #DCCFB5; }
+.border-borderlight { border-color: #DCCFB5; }
+.hover-bg-borderlight:hover { background-color: #DCCFB5; }
+.hover-text-borderlight:hover { color: #DCCFB5; }
+.placeholder-borderlight::placeholder { color: #DCCFB5; }
+.bg-border { background-color: #E7DCC9; }
+.text-border { color: #E7DCC9; }
+.border-border { border-color: #E7DCC9; }
+.hover-bg-border:hover { background-color: #E7DCC9; }
+.hover-text-border:hover { color: #E7DCC9; }
+.placeholder-border::placeholder { color: #E7DCC9; }
+.bg-ink2 { background-color: #3D3226; }
+.text-ink2 { color: #3D3226; }
+.border-ink2 { border-color: #3D3226; }
+.hover-bg-ink2:hover { background-color: #3D3226; }
+.hover-text-ink2:hover { color: #3D3226; }
+.placeholder-ink2::placeholder { color: #3D3226; }
+.bg-green { background-color: #3E6B34; }
+.text-green { color: #3E6B34; }
+.border-green { border-color: #3E6B34; }
+.hover-bg-green:hover { background-color: #3E6B34; }
+.hover-text-green:hover { color: #3E6B34; }
+.placeholder-green::placeholder { color: #3E6B34; }
+.bg-brown { background-color: #5B4A3A; }
+.text-brown { color: #5B4A3A; }
+.border-brown { border-color: #5B4A3A; }
+.hover-bg-brown:hover { background-color: #5B4A3A; }
+.hover-text-brown:hover { color: #5B4A3A; }
+.placeholder-brown::placeholder { color: #5B4A3A; }
+.bg-red { background-color: #8A2E2E; }
+.text-red { color: #8A2E2E; }
+.border-red { border-color: #8A2E2E; }
+.hover-bg-red:hover { background-color: #8A2E2E; }
+.hover-text-red:hover { color: #8A2E2E; }
+.placeholder-red::placeholder { color: #8A2E2E; }
+.bg-copper2 { background-color: #8A5320; }
+.text-copper2 { color: #8A5320; }
+.border-copper2 { border-color: #8A5320; }
+.hover-bg-copper2:hover { background-color: #8A5320; }
+.hover-text-copper2:hover { color: #8A5320; }
+.placeholder-copper2::placeholder { color: #8A5320; }
+.bg-warntext { background-color: #8A5A18; }
+.text-warntext { color: #8A5A18; }
+.border-warntext { border-color: #8A5A18; }
+.hover-bg-warntext:hover { background-color: #8A5A18; }
+.hover-text-warntext:hover { color: #8A5A18; }
+.placeholder-warntext::placeholder { color: #8A5A18; }
+.bg-muted { background-color: #8A7A64; }
+.text-muted { color: #8A7A64; }
+.border-muted { border-color: #8A7A64; }
+.hover-bg-muted:hover { background-color: #8A7A64; }
+.hover-text-muted:hover { color: #8A7A64; }
+.placeholder-muted::placeholder { color: #8A7A64; }
+.bg-mutedlight { background-color: #B9A47E; }
+.text-mutedlight { color: #B9A47E; }
+.border-mutedlight { border-color: #B9A47E; }
+.hover-bg-mutedlight:hover { background-color: #B9A47E; }
+.hover-text-mutedlight:hover { color: #B9A47E; }
+.placeholder-mutedlight::placeholder { color: #B9A47E; }
+.bg-mutedlighter { background-color: #C9B48D; }
+.text-mutedlighter { color: #C9B48D; }
+.border-mutedlighter { border-color: #C9B48D; }
+.hover-bg-mutedlighter:hover { background-color: #C9B48D; }
+.hover-text-mutedlighter:hover { color: #C9B48D; }
+.placeholder-mutedlighter::placeholder { color: #C9B48D; }
+.bg-ink-50 { background-color: rgba(43,36,32,0.5); }
+.bg-paper-60 { background-color: rgba(245,239,226,0.6); }
+.bg-paper-70 { background-color: rgba(245,239,226,0.7); }
+.focus-border-copper:focus { border-color: #B87333; }
+.focus-ring-copper:focus { box-shadow: 0 0 0 2px rgba(184,115,51,0.4); outline: none; }
+.text-10 { font-size: 10px; }
+.text-11 { font-size: 11px; }
+.text-17 { font-size: 17px; }
+.tracking-header { letter-spacing: 0.15em; }
+.grid-vendas-m { grid-template-columns: 1fr auto auto auto; }
+.grid-vendas-d { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; }
+@media (min-width: 640px) { .sm\:grid-vendas-d { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; } }
+.max-h-modal { max-height: 92vh; }
+.blur-2 { backdrop-filter: blur(2px); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .faixa-row { display: flex; align-items: center; gap: 8px; }
+        .faixa-label { width: 40px; flex: 0 0 40px; }
+        .faixa-input-ate { flex: 1 1 auto; min-width: 0; }
+        .faixa-ate-vazia { flex: 1 1 auto; min-width: 0; }
+        .faixa-input-pct { flex: 0 0 72px; width: 72px; min-width: 72px; text-align: right; }
+        .faixa-pct-sign { flex: 0 0 auto; }
+        .faixa-remove { flex: 0 0 auto; }
+      `}</style>
+
+      {/* Header */}
+      <header className="bg-ink text-cream sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-copper flex items-center justify-center shrink-0">
+              <Gem size={16} strokeWidth={2} />
+            </div>
+            <div>
+              <div className="font-serif text-17 leading-tight" style={{ fontFamily: "Fraunces, serif" }}>Liary</div>
+              <div className="text-10 uppercase tracking-header text-mutedlighter">Controle de estoque</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span
+              className="hidden sm:inline text-11"
+              style={{
+                color:
+                  saveState === "error" || saveState === "unavailable" ? "#E39A9A" : "#C9B48D",
+              }}
+            >
+              {saveState === "saving" && "Salvando…"}
+              {saveState === "saved" && "Salvo"}
+              {saveState === "error" && "Erro ao salvar — tentando de novo"}
+              {saveState === "unavailable" && "Sem armazenamento persistente"}
+            </span>
+            <button
+              onClick={() => setProductModal({})}
+              className="flex items-center gap-1.5 bg-copper hover-bg-copper-hover text-cream text-sm font-medium rounded-lg px-3 py-2 transition"
+            >
+              <Plus size={16} /> <span className="hidden sm:inline">Nova peça</span>
+            </button>
+          </div>
+        </div>
+        {(saveState === "error" || saveState === "unavailable") && (
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-2">
+            <div
+              className="text-xs rounded-lg px-3 py-2"
+              style={{ background: "rgba(139,46,46,0.25)", color: "#F3DEDE" }}
+            >
+              {saveState === "unavailable"
+                ? "Não consegui acessar o armazenamento deste artefato — os dados só vão durar enquanto esta aba estiver aberta. Recarregue a página; se persistir, me avise."
+                : "O último salvamento falhou. Continuo tentando salvar a cada alteração — se o aviso não sumir, me avise para eu investigar."}
+            </div>
+          </div>
+        )}
+        <div className="max-w-6xl mx-auto px-2 sm:px-6 flex overflow-x-auto no-scrollbar border-t border-ink-border">
+          {NAV.map((n) => (
+            <button
+              key={n.id}
+              onClick={() => setTab(n.id)}
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 text-sm whitespace-nowrap border-b-2 transition ${
+                tab === n.id
+                  ? "border-copper text-cream"
+                  : "border-transparent text-mutedlight hover-text-cream"
+              }`}
+            >
+              <n.icon size={15} strokeWidth={1.8} /> {n.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+        {!loaded ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <Gem size={24} strokeWidth={1.5} className="text-mutedlighter mb-3" />
+            <p className="text-sm text-muted">Carregando seus dados…</p>
+          </div>
+        ) : (
+        <>
+        {tab === "dashboard" && (
+          <DashboardTab stats={stats} suppliers={supplierSummaries} products={products} setTab={setTab} />
+        )}
+
+        {tab === "estoque" && (
+          <EstoqueTab
+            products={filteredProducts}
+            suppliers={suppliers}
+            search={search}
+            setSearch={setSearch}
+            filterOrigem={filterOrigem}
+            setFilterOrigem={setFilterOrigem}
+            filterStatus={filterStatus}
+            setFilterStatus={setFilterStatus}
+            view={view}
+            setView={setView}
+            onEdit={setProductModal}
+            onSell={setSellModal}
+            onReturn={returnProduct}
+            supplierById={supplierById}
+          />
+        )}
+
+        {tab === "vendas" && <VendasTab sales={sales} products={products} suppliers={suppliers} />}
+
+        {tab === "fornecedores" && (
+          <FornecedoresTab
+            summaries={supplierSummaries}
+            onNew={() => setSupplierModal({})}
+            onEdit={setSupplierModal}
+          />
+        )}
+
+        {tab === "movimentacoes" && <MovimentacoesTab movements={movements} products={products} />}
+        </>
+        )}
+      </main>
+
+      {productModal !== null && (
+        <ProductModal
+          initial={productModal}
+          suppliers={suppliers}
+          onClose={() => setProductModal(null)}
+          onSave={saveProduct}
+          onDelete={deleteProduct}
+        />
+      )}
+
+      {sellModal && (
+        <SellModal product={sellModal} onClose={() => setSellModal(null)} onConfirm={registerSale} />
+      )}
+
+      {supplierModal !== null && (
+        <SupplierModal initial={supplierModal} onClose={() => setSupplierModal(null)} onSave={saveSupplier} />
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   DASHBOARD
+--------------------------------------------------------------------- */
+
+function DashboardTab({ stats, suppliers, products, setTab }) {
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h2 className="font-serif text-2xl text-ink" style={{ fontFamily: "Fraunces, serif" }}>Painel geral</h2>
+        <p className="text-sm text-muted mt-0.5">Visão consolidada do estoque, vendas e comissões.</p>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={Package} label="Peças em estoque" value={stats.totalPecas} accent="#8A5320" />
+        <StatCard icon={Gem} label="Consignadas" value={stats.consignadas} accent="#6B2737" />
+        <StatCard icon={ShoppingBag} label="Estoque próprio" value={stats.proprias} accent="#3E6B34" />
+        <StatCard icon={AlertTriangle} label="Estoque baixo" value={stats.baixo.length} sub="≤ 1 unidade" accent="#8A2E2E" />
+        <StatCard icon={TrendingUp} label="Total vendido" value={brl(stats.totalVendido)} accent="#8A5320" />
+        <StatCard icon={Users} label="Comissões a receber" value={brl(stats.comissoesReceber)} accent="#6B2737" />
+        <StatCard icon={ArrowUpCircle} label="A repassar a fornecedores" value={brl(stats.repassarFornecedores)} accent="#8A5320" />
+        <StatCard icon={TrendingUp} label="Lucro · estoque próprio" value={brl(stats.lucroProprio)} accent="#3E6B34" />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-serif text-base" style={{ fontFamily: "Fraunces, serif" }}>Comissões por fornecedor</h3>
+            <button onClick={() => setTab("fornecedores")} className="text-xs text-copper2 font-medium flex items-center gap-0.5 hover:underline">
+              ver tudo <ChevronRight size={13} />
+            </button>
+          </div>
+          {suppliers.length === 0 ? (
+            <p className="text-sm text-muted">Nenhum fornecedor cadastrado ainda.</p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {suppliers.map((s) => (
+                <div key={s.supplier.id} className="flex items-center justify-between text-sm border-b border-dashed border-border pb-2 last:border-0 last:pb-0">
+                  <div>
+                    <div className="font-medium text-ink">{s.supplier.nome}</div>
+                    <div className="text-xs text-muted">Total vendido: {brl(s.total)} · faixa {s.percentual}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-wine font-semibold">{brl(s.comissao)}</div>
+                    <div className="text-11 text-muted">sua comissão</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-serif text-base" style={{ fontFamily: "Fraunces, serif" }}>Estoque baixo</h3>
+            <button onClick={() => setTab("estoque")} className="text-xs text-copper2 font-medium flex items-center gap-0.5 hover:underline">
+              ver estoque <ChevronRight size={13} />
+            </button>
+          </div>
+          {stats.baixo.length === 0 ? (
+            <p className="text-sm text-muted">Nenhuma peça com estoque baixo no momento.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {stats.baixo.slice(0, 6).map((p) => (
+                <div key={p.id} className="flex items-center justify-between text-sm">
+                  <span className="text-ink truncate pr-2">{p.descricao}</span>
+                  <Tag tone="danger">{p.quantidade} un.</Tag>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   ESTOQUE
+--------------------------------------------------------------------- */
+
+function EstoqueTab({
+  products, suppliers, search, setSearch, filterOrigem, setFilterOrigem,
+  filterStatus, setFilterStatus, view, setView, onEdit, onSell, onReturn, supplierById,
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <h2 className="font-serif text-2xl" style={{ fontFamily: "Fraunces, serif" }}>Estoque</h2>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setView("grid")}
+            className={`p-2 rounded-lg border ${view === "grid" ? "bg-ink text-cream border-ink" : "border-borderlight text-muted"}`}
+          >
+            <LayoutGrid size={16} />
+          </button>
+          <button
+            onClick={() => setView("list")}
+            className={`p-2 rounded-lg border ${view === "list" ? "bg-ink text-cream border-ink" : "border-borderlight text-muted"}`}
+          >
+            <ListIcon size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2.5">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-mutedlight" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por descrição, código ou categoria…"
+            className={`${inputCls} pl-9`}
+          />
+        </div>
+        <div className="flex gap-2">
+          <select value={filterOrigem} onChange={(e) => setFilterOrigem(e.target.value)} className={`${inputCls} w-auto`}>
+            <option value="todos">Toda origem</option>
+            <option value="consignado">Consignado</option>
+            <option value="proprio">Estoque próprio</option>
+          </select>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={`${inputCls} w-auto`}>
+            <option value="todos">Todo status</option>
+            <option value="disponivel">Disponível</option>
+            <option value="vendida">Vendida</option>
+            <option value="devolvida">Devolvida</option>
+          </select>
+        </div>
+      </div>
+
+      {products.length === 0 ? (
+        <EmptyState icon={Package} title="Nenhuma peça encontrada" hint="Ajuste os filtros ou cadastre uma nova peça no estoque." />
+      ) : (
+        <div className={view === "grid" ? "grid sm:grid-cols-2 xl:grid-cols-3 gap-3" : "flex flex-col gap-2.5"}>
+          {products.map((p) => (
+            <TicketCard
+              key={p.id}
+              p={p}
+              supplierName={p.fornecedorId ? supplierById(p.fornecedorId)?.nome : null}
+              onEdit={onEdit}
+              onSell={onSell}
+              onReturn={onReturn}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   VENDAS
+--------------------------------------------------------------------- */
+
+function VendasTab({ sales, products, suppliers }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="font-serif text-2xl" style={{ fontFamily: "Fraunces, serif" }}>Vendas</h2>
+        <p className="text-sm text-muted mt-0.5">Registre uma venda a partir do card da peça, na aba Estoque.</p>
+      </div>
+
+      {sales.length === 0 ? (
+        <EmptyState icon={ShoppingBag} title="Nenhuma venda registrada" hint="As vendas aparecem aqui assim que você vender uma peça no Estoque." />
+      ) : (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="grid grid-vendas-m sm:grid-vendas-d gap-2 px-4 py-2.5 text-11 uppercase tracking-wider text-muted font-semibold border-b border-border bg-paper-60">
+            <span>Peça</span>
+            <span className="hidden sm:block">Cliente</span>
+            <span>Pagamento</span>
+            <span>Data</span>
+            <span className="text-right">Valor</span>
+          </div>
+          {sales.map((s) => {
+            const prod = products.find((p) => p.id === s.productId);
+            return (
+              <div key={s.id} className="grid grid-vendas-m sm:grid-vendas-d gap-2 px-4 py-2.5 text-sm border-b border-tan last:border-0 items-center">
+                <div className="min-w-0">
+                  <div className="truncate text-ink">{prod?.descricao || "Peça removida"}</div>
+                  <div className="sm:hidden text-11 text-muted">{s.cliente}</div>
+                </div>
+                <span className="hidden sm:block text-brown truncate">{s.cliente}</span>
+                <Tag tone={s.origem === "consignado" ? "copper" : "neutral"}>{s.formaPagamento}</Tag>
+                <span className="text-muted text-xs">{fmtDate(s.data)}</span>
+                <span className="text-right font-serif text-wine" style={{ fontFamily: "Fraunces, serif" }}>{brl(s.valor)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   FORNECEDORES
+--------------------------------------------------------------------- */
+
+function FornecedoresTab({ summaries, onNew, onEdit }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-serif text-2xl" style={{ fontFamily: "Fraunces, serif" }}>Fornecedores & comissão</h2>
+          <p className="text-sm text-muted mt-0.5">Regras de comissão por faixa de valor vendido.</p>
+        </div>
+        <button onClick={onNew} className="flex items-center gap-1.5 bg-ink text-cream text-sm font-medium rounded-lg px-3 py-2 hover-bg-ink-hover transition">
+          <Plus size={15} /> <span className="hidden sm:inline">Fornecedor</span>
+        </button>
+      </div>
+
+      {summaries.length === 0 ? (
+        <EmptyState icon={Users} title="Nenhum fornecedor cadastrado" hint="Cadastre um fornecedor para definir as faixas de comissão do consignado." />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {summaries.map(({ supplier, total, percentual, comissao, repasse, faixa, nVendas }) => (
+            <div key={supplier.id} className="relative bg-card border border-border rounded-2xl p-4 sm:p-5">
+              <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-paper border border-border hidden sm:block" />
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <div className="font-serif text-lg" style={{ fontFamily: "Fraunces, serif" }}>{supplier.nome}</div>
+                  <div className="text-xs text-muted">{nVendas} venda{nVendas !== 1 ? "s" : ""} registrada{nVendas !== 1 ? "s" : ""}</div>
+                </div>
+                <button onClick={() => onEdit(supplier)} className="text-muted hover-text-copper2 p-1">
+                  <Pencil size={15} />
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {supplier.faixas.map((f, i) => (
+                  <span
+                    key={i}
+                    className={`text-11 px-2.5 py-1 rounded-full border ${
+                      faixa === f ? "bg-wine text-cream border-wine" : "border-borderlight text-muted"
+                    }`}
+                  >
+                    {f.ate === null ? `acima de ${brl(supplier.faixas[i - 1]?.ate ?? 0)}` : `até ${brl(f.ate)}`} · {f.percentual}%
+                  </span>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center bg-paper-70 rounded-xl p-3">
+                <div>
+                  <div className="text-10 uppercase tracking-wide text-muted">Total vendido</div>
+                  <div className="font-serif text-base mt-0.5" style={{ fontFamily: "Fraunces, serif" }}>{brl(total)}</div>
+                </div>
+                <div>
+                  <div className="text-10 uppercase tracking-wide text-muted">Sua comissão ({percentual}%)</div>
+                  <div className="font-serif text-base mt-0.5 text-wine" style={{ fontFamily: "Fraunces, serif" }}>{brl(comissao)}</div>
+                </div>
+                <div>
+                  <div className="text-10 uppercase tracking-wide text-muted">A repassar</div>
+                  <div className="font-serif text-base mt-0.5" style={{ fontFamily: "Fraunces, serif" }}>{brl(repasse)}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-xs text-muted leading-relaxed border-t border-border pt-3">
+        A faixa aplicada considera o total já vendido do fornecedor: ao ultrapassar um limite, o percentual da nova
+        faixa passa a incidir sobre o total acumulado. Se preferir um cálculo progressivo (percentual por faixa
+        somado em partes), é só pedir o ajuste.
+      </p>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   MOVIMENTAÇÕES
+--------------------------------------------------------------------- */
+
+function MovimentacoesTab({ movements, products }) {
+  const icons = { entrada: ArrowDownCircle, venda: ArrowUpCircle, devolucao: RotateCcw };
+  const tones = { entrada: "ok", venda: "plum", devolucao: "warn" };
+  const labels = { entrada: "Entrada", venda: "Venda", devolucao: "Devolução" };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="font-serif text-2xl" style={{ fontFamily: "Fraunces, serif" }}>Movimentações</h2>
+        <p className="text-sm text-muted mt-0.5">Histórico automático de entradas, vendas e devoluções.</p>
+      </div>
+
+      {movements.length === 0 ? (
+        <EmptyState icon={RotateCcw} title="Nenhuma movimentação ainda" hint="Toda entrada, venda ou devolução de peça aparece aqui automaticamente." />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {movements.map((m) => {
+            const prod = products.find((p) => p.id === m.productId);
+            const Icon = icons[m.tipo];
+            return (
+              <div key={m.id} className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3">
+                <Icon size={18} strokeWidth={1.6} className="text-copper2 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-ink truncate">{prod?.descricao || "Peça removida"}</div>
+                  <div className="text-xs text-muted">{m.detalhe}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Tag tone={tones[m.tipo]}>{labels[m.tipo]}</Tag>
+                  <span className="text-11 text-muted">{fmtDate(m.data)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   PRODUCT MODAL
+--------------------------------------------------------------------- */
+
+function ProductModal({ initial, suppliers, onClose, onSave, onDelete }) {
+  const isEdit = !!initial?.id;
+  const [form, setForm] = useState({
+    id: initial?.id || null,
+    codigoFornecedor: initial?.codigoFornecedor || "",
+    codigoInterno: initial?.codigoInterno || "",
+    descricao: initial?.descricao || "",
+    categoria: initial?.categoria || "",
+    subcategoria: initial?.subcategoria || "",
+    material: initial?.material || "",
+    foto: initial?.foto || "",
+    quantidade: initial?.quantidade ?? 1,
+    valorPeca: initial?.valorPeca ?? "",
+    valorVenda: initial?.valorVenda ?? "",
+    fornecedorId: initial?.fornecedorId || "",
+    origem: initial?.origem || "consignado",
+    dataEntrada: initial?.dataEntrada || todayISO(),
+    status: initial?.status || "disponivel",
+  });
+  const fileRef = useRef();
+
+  function handlePhoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setForm((f) => ({ ...f, foto: reader.result }));
+    reader.readAsDataURL(file);
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!form.descricao.trim()) return;
+    onSave({
+      ...form,
+      quantidade: Number(form.quantidade) || 0,
+      valorPeca: Number(form.valorPeca) || 0,
+      valorVenda: Number(form.valorVenda) || 0,
+      fornecedorId: form.origem === "consignado" ? form.fornecedorId : "",
+    });
+  }
+
+  return (
+    <Modal title={isEdit ? "Editar peça" : "Nova peça"} onClose={onClose} wide>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <div className="flex items-center gap-4">
+          <div
+            onClick={() => fileRef.current?.click()}
+            className="w-20 h-20 rounded-xl bg-sand border border-dashed border-borderlight flex items-center justify-center overflow-hidden cursor-pointer shrink-0"
+          >
+            {form.foto ? <img src={form.foto} className="w-full h-full object-cover" alt="" /> : <Camera size={20} className="text-mutedlight" />}
+          </div>
+          <div className="text-xs text-muted">
+            <button type="button" onClick={() => fileRef.current?.click()} className="text-copper2 font-medium hover:underline">
+              Adicionar foto
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} className="hidden" />
+            <p className="mt-0.5">JPG ou PNG, opcional.</p>
+          </div>
+        </div>
+
+        <Field label="Descrição">
+          <input required className={inputCls} value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} placeholder="Ex.: Colar gargantilha banhado a ouro" />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Categoria">
+            <input className={inputCls} value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} placeholder="Colares, anéis…" />
+          </Field>
+          <Field label="Subcategoria">
+            <input className={inputCls} value={form.subcategoria} onChange={(e) => setForm({ ...form, subcategoria: e.target.value })} placeholder="Gargantilha, riviera…" />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Material">
+            <select className={inputCls} value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })}>
+              <option value="">Selecionar…</option>
+              <option value="banhado_ouro">Banhado a ouro</option>
+              <option value="banhado_prata">Banhado a prata</option>
+              <option value="prata_925">Prata 925</option>
+              <option value="bijuteria">Bijuteria</option>
+            </select>
+          </Field>
+          <Field label="Origem">
+            <select className={inputCls} value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })}>
+              <option value="consignado">Consignado</option>
+              <option value="proprio">Estoque próprio</option>
+            </select>
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Código do fornecedor">
+            <input className={`${inputCls} font-mono`} value={form.codigoFornecedor} onChange={(e) => setForm({ ...form, codigoFornecedor: e.target.value })} />
+          </Field>
+          <Field label="Código interno (opcional)">
+            <input className={`${inputCls} font-mono`} value={form.codigoInterno} onChange={(e) => setForm({ ...form, codigoInterno: e.target.value })} />
+          </Field>
+        </div>
+
+        {form.origem === "consignado" && (
+          <Field label="Fornecedor">
+            <select className={inputCls} value={form.fornecedorId} onChange={(e) => setForm({ ...form, fornecedorId: e.target.value })}>
+              <option value="">Selecionar…</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>{s.nome}</option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Quantidade">
+            <input type="number" min="0" className={inputCls} value={form.quantidade} onChange={(e) => setForm({ ...form, quantidade: e.target.value })} />
+          </Field>
+          <Field label={form.origem === "consignado" ? "Valor da peça" : "Custo (peça)"}>
+            <input type="number" step="0.01" min="0" className={inputCls} value={form.valorPeca} onChange={(e) => setForm({ ...form, valorPeca: e.target.value })} />
+          </Field>
+          <Field label="Valor de venda">
+            <input type="number" step="0.01" min="0" className={inputCls} value={form.valorVenda} onChange={(e) => setForm({ ...form, valorVenda: e.target.value })} />
+          </Field>
+        </div>
+
+        {form.origem === "proprio" && form.valorPeca !== "" && form.valorVenda !== "" && (
+          <div className="text-xs bg-mint text-green rounded-lg px-3 py-2">
+            Margem estimada por peça: <strong>{brl((Number(form.valorVenda) || 0) - (Number(form.valorPeca) || 0))}</strong>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Data de entrada">
+            <input type="date" className={inputCls} value={form.dataEntrada} onChange={(e) => setForm({ ...form, dataEntrada: e.target.value })} />
+          </Field>
+          <Field label="Status">
+            <select className={inputCls} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+              <option value="disponivel">Disponível</option>
+              <option value="vendida">Vendida</option>
+              <option value="devolvida">Devolvida</option>
+            </select>
+          </Field>
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-border mt-1">
+          {isEdit ? (
+            <button
+              type="button"
+              onClick={() => onDelete(form.id)}
+              className="flex items-center gap-1.5 text-sm text-red font-medium hover:underline"
+            >
+              <Trash2 size={14} /> Excluir peça
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="text-sm font-medium px-4 py-2 rounded-lg border border-borderlight text-brown">
+              Cancelar
+            </button>
+            <button type="submit" className="text-sm font-semibold px-4 py-2 rounded-lg bg-ink text-cream hover-bg-ink-hover">
+              Salvar
+            </button>
+          </div>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   SELL MODAL
+--------------------------------------------------------------------- */
+
+function SellModal({ product, onClose, onConfirm }) {
+  const [cliente, setCliente] = useState("");
+  const [valor, setValor] = useState(product.valorVenda);
+  const [formaPagamento, setFormaPagamento] = useState("Pix");
+  const [quantidade, setQuantidade] = useState(1);
+
+  function submit(e) {
+    e.preventDefault();
+    onConfirm({ product, cliente, valor, formaPagamento, quantidade: Number(quantidade) });
+  }
+
+  return (
+    <Modal title="Registrar venda" onClose={onClose}>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <div className="flex items-center gap-3 bg-paper-70 rounded-xl p-3">
+          <div className="w-12 h-12 rounded-lg bg-sand flex items-center justify-center overflow-hidden shrink-0">
+            {product.foto ? <img src={product.foto} className="w-full h-full object-cover" alt="" /> : <Gem size={18} className="text-mutedlighter" />}
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-medium truncate">{product.descricao}</div>
+            <div className="text-xs text-muted font-mono">{product.codigoInterno || product.codigoFornecedor} · disponível: {product.quantidade}</div>
+          </div>
+        </div>
+
+        <Field label="Cliente">
+          <input className={inputCls} value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Nome do cliente" />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Quantidade">
+            <input type="number" min="1" max={product.quantidade} className={inputCls} value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+          </Field>
+          <Field label="Valor da venda">
+            <input type="number" step="0.01" min="0" className={inputCls} value={valor} onChange={(e) => setValor(e.target.value)} />
+          </Field>
+        </div>
+
+        <Field label="Forma de pagamento">
+          <select className={inputCls} value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)}>
+            <option>Pix</option>
+            <option>Dinheiro</option>
+            <option>Cartão de débito</option>
+            <option>Cartão de crédito</option>
+            <option>Outro</option>
+          </select>
+        </Field>
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-border">
+          <button type="button" onClick={onClose} className="text-sm font-medium px-4 py-2 rounded-lg border border-borderlight text-brown">
+            Cancelar
+          </button>
+          <button type="submit" className="text-sm font-semibold px-4 py-2 rounded-lg bg-ink text-cream hover-bg-ink-hover">
+            Confirmar venda
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   SUPPLIER MODAL
+--------------------------------------------------------------------- */
+
+function SupplierModal({ initial, onClose, onSave }) {
+  const isEdit = !!initial?.id;
+  const [nome, setNome] = useState(initial?.nome || "");
+  const [faixas, setFaixas] = useState(
+    initial?.faixas?.length ? initial.faixas : [{ ate: 300, percentual: 25 }, { ate: null, percentual: 35 }]
+  );
+
+  function updateFaixa(i, key, value) {
+    setFaixas((fs) => fs.map((f, idx) => (idx === i ? { ...f, [key]: value } : f)));
+  }
+  function addFaixa() {
+    setFaixas((fs) => {
+      const withoutOpen = fs.map((f) => f);
+      const last = withoutOpen[withoutOpen.length - 1];
+      const novoLimite = (last?.ate ?? 0) + 500;
+      return [...withoutOpen.slice(0, -1), { ate: novoLimite, percentual: last?.percentual ?? 30 }, { ate: null, percentual: (last?.percentual ?? 30) + 10 }];
+    });
+  }
+  function removeFaixa(i) {
+    setFaixas((fs) => (fs.length <= 1 ? fs : fs.filter((_, idx) => idx !== i)));
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!nome.trim()) return;
+    onSave({ id: initial?.id, nome, tipo: "consignado", faixas: faixas.map((f) => ({ ate: f.ate === null ? null : Number(f.ate), percentual: Number(f.percentual) })) });
+  }
+
+  return (
+    <Modal title={isEdit ? "Editar fornecedor" : "Novo fornecedor"} onClose={onClose}>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <Field label="Nome do fornecedor">
+          <input required className={inputCls} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Bruna Acessórios" />
+        </Field>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-11 uppercase tracking-wider text-muted font-semibold">Faixas de comissão</span>
+            <button type="button" onClick={addFaixa} className="text-xs text-copper2 font-medium flex items-center gap-1 hover:underline">
+              <Plus size={13} /> adicionar faixa
+            </button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {faixas.map((f, i) => (
+              <div key={i} className="faixa-row bg-paper-70 rounded-lg p-2.5">
+                <span className="text-xs text-muted faixa-label">Até</span>
+                {f.ate === null ? (
+                  <span className="text-sm text-muted faixa-ate-vazia">valor acima da faixa anterior</span>
+                ) : (
+                  <input
+                    type="number"
+                    min="0"
+                    className={`${inputCls} py-1.5 faixa-input-ate`}
+                    value={f.ate}
+                    onChange={(e) => updateFaixa(i, "ate", e.target.value)}
+                  />
+                )}
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  className={`${inputCls} py-1.5 faixa-input-pct`}
+                  value={f.percentual}
+                  onChange={(e) => updateFaixa(i, "percentual", e.target.value)}
+                />
+                <span className="text-xs text-muted faixa-pct-sign">%</span>
+                {faixas.length > 1 && (
+                  <button type="button" onClick={() => removeFaixa(i)} className="text-mutedlight hover-text-red p-1 faixa-remove">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-11 text-muted" style={{ marginTop: 8 }}>Ex.: até R$ 300,00 → 25%. A última faixa não tem limite e vale para qualquer valor acima da anterior.</p>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-border">
+          <button type="button" onClick={onClose} className="text-sm font-medium px-4 py-2 rounded-lg border border-borderlight text-brown">
+            Cancelar
+          </button>
+          <button type="submit" className="text-sm font-semibold px-4 py-2 rounded-lg bg-ink text-cream hover-bg-ink-hover">
+            Salvar fornecedor
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+
+
+const rootEl = document.getElementById("root");
+try {
+  ReactDOM.createRoot(rootEl).render(React.createElement(SemijoiasERP));
+  window.__liaryMounted = true;
+} catch (mountError) {
+  showFatalError(
+    "Erro ao iniciar o aplicativo (" + mountError.message + ")",
+    mountError.stack || ""
+  );
+}
+
+</script>
+</body>
+</html>
